@@ -1,0 +1,14 @@
+{
+  "name": "tafsir-mcp",
+  "version": "3.0.0",
+  "description": "MCP Server كامل لموقع مركز تفسير للدراسات القرآنية",
+  "type": "module",
+  "main": "index.js",
+  "bin": { "tafsir-mcp": "./index.js" },
+  "scripts": { "start": "node index.js" },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "cheerio": "^1.0.0",
+    "xml2js": "^0.6.0"
+  }
+}
