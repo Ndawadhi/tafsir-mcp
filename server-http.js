@@ -1,6 +1,8 @@
 import express from "express";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import { randomUUID } from "crypto";
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import * as cheerio from "cheerio";
 
@@ -209,7 +211,19 @@ app.use((req,res,next)=>{
 });
 
 // health check
-app.get("/", (_,res) => res.json({ name:"tafsir-mcp", version:"3.0.0", status:"running" }));
+app.get("/", (_,res) => res.json({
+    name: "tafsir-mcp",
+    version: "3.0.0",
+    status: "running",
+    description: "MCP Server لموقع مركز تفسير للدراسات القرآنية",
+    source: "https://tafsir.net",
+    connection: {
+      sse_endpoint: "https://tafsir-mcp.onrender.com/sse",
+      claude_ai: "Settings → Integrations → Add: https://tafsir-mcp.onrender.com/sse"
+    },
+    tools: ["search","get_content","browse","get_author","search_author","get_multiple","browse_category"],
+    content_types: ["مقالات","بحوث","حوارات","استشراق","ترجمات","دروس","تعريفات"]
+  }));
 
 // SSE — كل client يفتح connection جديدة
 app.get("/sse", async (req,res)=>{
@@ -232,6 +246,34 @@ app.post("/messages", express.raw({type:"*/*"}), async (req,res)=>{
   }
 });
 
+// ── /mcp endpoint لـ ChatGPT (Streamable HTTP) ──────────────
+const mcpSessions = {};
+
+app.all("/mcp", express.raw({ type: "*/*" }), async (req, res) => {
+  try {
+    // إنشاء session جديدة أو استرجاع موجودة
+    const sessionId = req.headers["mcp-session-id"] || randomUUID();
+
+    if (!mcpSessions[sessionId]) {
+      const transport = new StreamableHTTPServerTransport({
+        sessionIdGenerator: () => sessionId,
+        onsessioninitialized: (id) => { mcpSessions[id] = transport; },
+      });
+      transport.onclose = () => { delete mcpSessions[sessionId]; };
+      const server = buildServer();
+      await server.connect(transport);
+      mcpSessions[sessionId] = transport;
+    }
+
+    const transport = mcpSessions[sessionId];
+    await transport.handleRequest(req, res, req.body ? JSON.parse(req.body.toString()) : undefined);
+  } catch (e) {
+    if (!res.headersSent) res.status(500).json({ error: e.message });
+  }
+});
+
 app.listen(PORT, ()=>{
   console.log(`🕌 Tafsir MCP v3 يعمل على المنفذ ${PORT}`);
+  console.log(`   Claude.ai  → /sse`);
+  console.log(`   ChatGPT    → /mcp`);
 });
